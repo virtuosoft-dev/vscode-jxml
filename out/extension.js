@@ -55,16 +55,36 @@ function activate(context) {
     context.subscriptions.push(disposable);
     // Register a folding range provider for jxml
     context.subscriptions.push(vscode.languages.registerFoldingRangeProvider('jxml', {
-        async provideFoldingRanges(document, token) {
-            // Create a virtual document to get HTML folding ranges
-            const virtualDoc = await vscode.workspace.openTextDocument({
-                language: 'html',
-                content: document.getText()
-            });
-            const htmlRanges = await vscode.commands.executeCommand('vscode.executeFoldingRangeProvider', virtualDoc.uri) || [];
-            // --- Custom JXML and JavaScript folding logic ---
-            const jxmlAndJsRanges = [];
+        provideFoldingRanges(document, context, token) {
+            const allRanges = [];
             const text = document.getText();
+            // --- 1. HTML Tag Folding Logic (No Virtual Docs) ---
+            const htmlTagStack = [];
+            // Regex to find start and end tags, ignoring those in comments
+            const tagRegex = /<\s*(\/)?\s*([a-zA-Z0-9\-]+)/g;
+            let tagMatch;
+            while ((tagMatch = tagRegex.exec(text)) !== null) {
+                const isClosingTag = tagMatch[1] !== undefined;
+                const tagName = tagMatch[2].toLowerCase();
+                const tagPosition = document.positionAt(tagMatch.index);
+                const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+                if (isClosingTag) {
+                    for (let i = htmlTagStack.length - 1; i >= 0; i--) {
+                        if (htmlTagStack[i].name === tagName) {
+                            const openTag = htmlTagStack[i];
+                            if (tagPosition.line > openTag.line) {
+                                allRanges.push(new vscode.FoldingRange(openTag.line, tagPosition.line));
+                            }
+                            htmlTagStack.splice(i);
+                            break;
+                        }
+                    }
+                }
+                else if (!voidElements.has(tagName)) {
+                    htmlTagStack.push({ name: tagName, line: tagPosition.line });
+                }
+            }
+            // --- 2. Custom JXML and JavaScript folding logic ---
             const startRegex = /<\?(jxml)?/g;
             const endRegex = /\?>/g;
             let startMatch;
@@ -74,25 +94,53 @@ function activate(context) {
                 if (endMatch) {
                     const startPos = document.positionAt(startMatch.index);
                     const endPos = document.positionAt(endMatch.index + endMatch[0].length);
-                    // 1. Fold the entire <? ... ?> block
+                    // 2a. Fold the entire <? ... ?> block
                     if (startPos.line < endPos.line) {
-                        jxmlAndJsRanges.push(new vscode.FoldingRange(startPos.line, endPos.line, vscode.FoldingRangeKind.Region));
+                        allRanges.push(new vscode.FoldingRange(startPos.line, endPos.line, vscode.FoldingRangeKind.Region));
                     }
-                    // 2. Find and fold {...} blocks within the JXML block
+                    // 2b. Find and fold {...} blocks within the JXML block
                     const blockContentStartIndex = startMatch.index + startMatch[0].length;
                     const blockContentEndIndex = endMatch.index;
                     const openBraceStack = [];
+                    let inString = null;
+                    let inSingleLineComment = false;
+                    let inMultiLineComment = false;
                     for (let i = blockContentStartIndex; i < blockContentEndIndex; i++) {
-                        if (text[i] === '{') {
-                            openBraceStack.push(i);
+                        const char = text[i];
+                        const prevChar = i > blockContentStartIndex ? text[i - 1] : null;
+                        if (inSingleLineComment && char === '\n') {
+                            inSingleLineComment = false;
                         }
-                        else if (text[i] === '}' && openBraceStack.length > 0) {
-                            const openBraceIndex = openBraceStack.pop();
-                            if (openBraceIndex) {
-                                const jsStartPos = document.positionAt(openBraceIndex);
-                                const jsEndPos = document.positionAt(i);
-                                if (jsStartPos.line < jsEndPos.line) {
-                                    jxmlAndJsRanges.push(new vscode.FoldingRange(jsStartPos.line, jsEndPos.line));
+                        else if (inMultiLineComment && char === '/' && prevChar === '*') {
+                            inMultiLineComment = false;
+                        }
+                        else if (inString && char === inString && prevChar !== '\\') {
+                            inString = null;
+                        }
+                        else if (inString && char === '\n' && inString !== '`') {
+                            inString = null;
+                        }
+                        else if (!inString && !inSingleLineComment && !inMultiLineComment) {
+                            if ((char === '"' || char === "'" || char === '`')) {
+                                inString = char;
+                            }
+                            else if (char === '/' && text[i + 1] === '/') {
+                                inSingleLineComment = true;
+                            }
+                            else if (char === '/' && text[i + 1] === '*') {
+                                inMultiLineComment = true;
+                            }
+                            else if (char === '{') {
+                                openBraceStack.push(i);
+                            }
+                            else if (char === '}' && openBraceStack.length > 0) {
+                                const openBraceIndex = openBraceStack.pop();
+                                if (openBraceIndex) {
+                                    const jsStartPos = document.positionAt(openBraceIndex);
+                                    const jsEndPos = document.positionAt(i);
+                                    if (jsStartPos.line < jsEndPos.line) {
+                                        allRanges.push(new vscode.FoldingRange(jsStartPos.line, jsEndPos.line));
+                                    }
                                 }
                             }
                         }
@@ -100,8 +148,7 @@ function activate(context) {
                     startRegex.lastIndex = endMatch.index + endMatch[0].length;
                 }
             }
-            // Combine all the folding ranges
-            return [...htmlRanges, ...jxmlAndJsRanges];
+            return allRanges;
         }
     }));
 }
