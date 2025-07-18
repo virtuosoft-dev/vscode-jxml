@@ -23,51 +23,65 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register a folding range provider for jxml
 	context.subscriptions.push(
-		vscode.languages.registerFoldingRangeProvider('jxml', {
-			provideFoldingRanges(document, context, token) {
-				console.log('Folding provider called for', document.fileName);
-				const foldingRanges: vscode.FoldingRange[] = [];
-				const startRegex = /<\?(jxml)?/;
-				const endRegex = /\?>/;
-				let startLine: number | null = null;
-				let inScript = false;
-				// Track JS block folding inside <? ... ?>
-				let jsBlockStack: number[] = [];
-				for (let i = 0; i < document.lineCount; i++) {
-					const line = document.lineAt(i).text;
-					if (!inScript && startRegex.test(line)) {
-						startLine = i;
-						inScript = true;
-						continue;
-					}
-					if (inScript && endRegex.test(line)) {
-						if (startLine !== null) {
-							foldingRanges.push(new vscode.FoldingRange(startLine, i));
-							console.log(`Folding range: ${startLine} to ${i}`);
-						}
-						startLine = null;
-						inScript = false;
-						jsBlockStack = [];
-						continue;
-					}
-					if (inScript) {
-						// Custom JS block folding for { ... }
-						if (line.includes('{')) {
-							jsBlockStack.push(i);
-						}
-						if (line.includes('}')) {
-							const blockStart = jsBlockStack.pop();
-							if (blockStart !== undefined && blockStart < i) {
-								foldingRanges.push(new vscode.FoldingRange(blockStart, i));
-								console.log(`JS block folding: ${blockStart} to ${i}`);
-							}
-						}
-					}
-				}
-				return foldingRanges;
-			}
-		})
-	);
+        vscode.languages.registerFoldingRangeProvider('jxml', {
+            async provideFoldingRanges(document, token) {
+                // Create a virtual document to get HTML folding ranges
+                const virtualDoc = await vscode.workspace.openTextDocument({
+                    language: 'html',
+                    content: document.getText()
+                });
+                const htmlRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>(
+                    'vscode.executeFoldingRangeProvider',
+                    virtualDoc.uri
+                ) || [];
+
+                // --- Custom JXML and JavaScript folding logic ---
+                const jxmlAndJsRanges: vscode.FoldingRange[] = [];
+                const text = document.getText();
+                const startRegex = /<\?(jxml)?/g;
+                const endRegex = /\?>/g;
+                let startMatch;
+
+                while ((startMatch = startRegex.exec(text)) !== null) {
+                    endRegex.lastIndex = startMatch.index + startMatch[0].length;
+                    const endMatch = endRegex.exec(text);
+                    if (endMatch) {
+                        const startPos = document.positionAt(startMatch.index);
+                        const endPos = document.positionAt(endMatch.index + endMatch[0].length);
+
+                        // 1. Fold the entire <? ... ?> block
+                        if (startPos.line < endPos.line) {
+                            jxmlAndJsRanges.push(new vscode.FoldingRange(startPos.line, endPos.line, vscode.FoldingRangeKind.Region));
+                        }
+
+                        // 2. Find and fold {...} blocks within the JXML block
+                        const blockContentStartIndex = startMatch.index + startMatch[0].length;
+                        const blockContentEndIndex = endMatch.index;
+                        const openBraceStack: number[] = [];
+
+                        for (let i = blockContentStartIndex; i < blockContentEndIndex; i++) {
+                            if (text[i] === '{') {
+                                openBraceStack.push(i);
+                            } else if (text[i] === '}' && openBraceStack.length > 0) {
+                                const openBraceIndex = openBraceStack.pop();
+                                if (openBraceIndex) {
+                                    const jsStartPos = document.positionAt(openBraceIndex);
+                                    const jsEndPos = document.positionAt(i);
+                                    if (jsStartPos.line < jsEndPos.line) {
+                                        jxmlAndJsRanges.push(new vscode.FoldingRange(jsStartPos.line, jsEndPos.line));
+                                    }
+                                }
+                            }
+                        }
+                        startRegex.lastIndex = endMatch.index + endMatch[0].length;
+                    }
+                }
+
+                // Combine all the folding ranges
+                return [...htmlRanges, ...jxmlAndJsRanges];
+            }
+        })
+    );
 }
 
 // This method is called when your extension is deactivated
