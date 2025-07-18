@@ -1,0 +1,63 @@
+{
+  "name": "jxml-support",
+  "displayName": "JXML Support",
+  "description": "VS Code extension for JXML: code folding for <? ... ?> and <?jxml ... ?> tags, NodeJS/JavaScript syntax highlighting and code hinting within those tags, and HTML highlighting outside.",
+  "version": "0.0.1",
+  "publisher": "Virtuosoft / Stephen J. Carnam",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/virtuosoft-dev/vscode-jxml"
+  },
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:jxml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jxml-support.helloWorld",
+        "title": "Hello World"
+      }
+    ],
+    "languages": [
+      {
+        "id": "jxml",
+        "aliases": ["JXML", "jxml"],
+        "extensions": [".jxml"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jxml",
+        "scopeName": "source.jxml",
+        "path": "./syntaxes/jxml.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.101.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "eslint": "^9.25.1",
+    "typescript": "^5.8.3",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}

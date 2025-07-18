@@ -1,0 +1,15 @@
+{
+  "scopeName": "source.jxml",
+  "patterns": [
+    {
+      "name": "meta.embedded.block.javascript.jxml",
+      "begin": "(<\\?(jxml)?)",
+      "end": "(\\?>)",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    },
+    { "include": "text.html.basic" }
+  ],
+  "fileTypes": ["jxml"]
+}
