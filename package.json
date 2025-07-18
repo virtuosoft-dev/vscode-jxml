@@ -3,7 +3,7 @@
   "displayName": "JXML Support",
   "description": "VS Code extension for JXML: code folding for <? ... ?> and <?jxml ... ?> tags, NodeJS/JavaScript syntax highlighting and code hinting within those tags, and HTML highlighting outside.",
   "version": "0.0.1",
-  "publisher": "Virtuosoft / Stephen J. Carnam",
+  "publisher": "Virtuosoft",
   "repository": {
     "type": "git",
     "url": "https://github.com/virtuosoft-dev/vscode-jxml"
